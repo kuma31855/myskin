@@ -48,14 +48,17 @@ wss.on('connection', (ws) => {
   });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-// CORS設定
-const allowedOrigins = [
+// CORS設定（本番では ALLOWED_ORIGINS でカンマ区切り指定）
+const defaultOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'https://ellen-subfastigiated-freda.ngrok-free.dev'
 ];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : defaultOrigins;
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {

@@ -1,5 +1,5 @@
 // src/components/LoginDialog.tsx
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Input } from './ui/input';
@@ -20,6 +20,8 @@ interface LoginDialogProps {
 
 type AuthStep = 'auth' | 'verify-otp';
 
+const API_BASE = (import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL ?? 'http://localhost:3000';
+
 export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,7 +35,7 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/login`, {
+      const response = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,7 +79,7 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
     }
     
     try {
-      const response = await fetch('http://localhost:3000/api/register', {
+      const response = await fetch(`${API_BASE}/api/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
