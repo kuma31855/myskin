@@ -21,6 +21,7 @@
 - **インスタンスタイプ**: 例 t3.small（必要に応じて変更）
 - **セキュリティグループ**:
   - インバウンド: 22 (SSH), 80 (HTTP), 443 (HTTPS)
+  - **Cloudflare 経由でアクセスする場合**: 80/443 のソースは `0.0.0.0/0` にする（Cloudflare の IP は多数あるため）。Cloudflare 経由でない場合は必要に応じて IP 制限可。
   - 同一VPC内から API(3000) にアクセスする場合は 3000 を開ける必要はない（Nginx リバースプロキシ経由）
 
 ---
@@ -181,6 +182,24 @@ server {
 }
 ```
 
+**フロント用** で `root` に `/home/ec2-user/myskin/build` を指定している場合、Nginx の実行ユーザー（多くは `nginx`）がこのパスを読める必要があります。`/home/ec2-user` が 700 だと読めないため、次のいずれかを実行してください。
+
+```bash
+# 方法A: パスを通す権限を付与（推奨・最小限）
+sudo chmod 755 /home/ec2-user /home/ec2-user/myskin /home/ec2-user/myskin/build
+# 静的ファイルは読めればよい
+find /home/ec2-user/myskin/build -type f -exec chmod 644 {} \;
+find /home/ec2-user/myskin/build -type d -exec chmod 755 {} \;
+```
+
+```bash
+# 方法B: 静的ファイルを /var/www に置く場合
+sudo mkdir -p /var/www/myskin
+sudo cp -r /home/ec2-user/myskin/build/* /var/www/myskin/
+sudo chown -R nginx:nginx /var/www/myskin
+# フロント用 conf の root を root /var/www/myskin; に変更
+```
+
 **API用** `/etc/nginx/conf.d/myskin-api.conf`:
 
 ```nginx
@@ -312,4 +331,101 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ---
 
-以上で、EC2 上でフロント（Nginx）・API（Node + PM2）・MySQL を使った本番構成の概要と設定手順になります。
+## 10. Cloudflare を使う場合（エラー 522 Connection timed out 対策）
+
+**エラー 522** は「Cloudflare → オリジン（EC2）への接続がタイムアウトした」状態です。ブラウザ→Cloudflare は OK、Cloudflare→EC2 が失敗しています。
+
+### 10.1 確認チェックリスト（順に確認）
+
+| # | 確認項目 | 対処 |
+|---|----------|------|
+| 1 | **EC2 が起動しているか** | AWS コンソールでインスタンスが「running」か確認。停止中なら起動する。 |
+| 2 | **セキュリティグループで 80/443 が開いているか** | インバウンドルールで **80** と **443** のソースを **0.0.0.0/0** にする（Cloudflare の IP は変動するため）。 |
+| 3 | **Cloudflare DNS の A レコード** | ドメイン（例: todokizamu.me）の A レコードが **EC2 のパブリック IP** を指しているか確認。Cloudflare プロキシ（オレンジの雲）ON のままでよい。 |
+| 4 | **EC2 上で Nginx が動いているか** | SSH で EC2 にログインし、`sudo systemctl status nginx` で **active (running)** か確認。止まっていれば `sudo systemctl start nginx`。 |
+| 5 | **Nginx が 80/443 で listen しているか** | `sudo ss -tlnp \| grep -E ':80|:443'` で nginx が表示されるか確認。 |
+| 6 | **EC2 の OS ファイアウォール** | Ubuntu: `sudo ufw status` → 80/443 が ALLOW か。未設定なら `sudo ufw allow 80` `sudo ufw allow 443` のあと `sudo ufw enable`。Amazon Linux はデフォルトで ufw 無効のことが多い。 |
+| 7 | **Cloudflare SSL/TLS モード** | ダッシュボード → SSL/TLS → 概要で「**Full**」または「**Full (strict)**」に。オリジンに証明書がない場合は「Full」のみ推奨。 |
+
+### 10.2 EC2 上で実行する確認コマンド（SSH でログイン後）
+
+```bash
+# Nginx の状態
+sudo systemctl status nginx
+
+# 80/443 を listen しているプロセス
+sudo ss -tlnp | grep -E ':80|:443'
+
+# ローカルから HTTP 応答があるか
+curl -sI http://127.0.0.1:80
+```
+
+`curl` で HTTP 200 や 301 が返れば、EC2 内では Web サーバーは動いています。その場合は **セキュリティグループ（80/443 を 0.0.0.0/0 に）** と **Cloudflare の A レコード（EC2 のパブリック IP）** を再確認してください。
+
+### 10.3 よくある原因のまとめ
+
+- **セキュリティグループで 80/443 が未開放** → 80, 443 のインバウンドを 0.0.0.0/0 に追加。
+- **A レコードが古い IP のまま** → EC2 のパブリック IP は再起動で変わる場合がある。Cloudflare の A レコードを現在の EC2 の IP に更新。
+- **Nginx が止まっている** → `sudo systemctl start nginx` と `sudo systemctl enable nginx`。
+- **別リージョン・VPC** → Cloudflare から見えるのは「パブリック IP」のみ。その EC2 のパブリック IP が A レコードと一致しているか確認。
+
+---
+
+---
+
+## 11. Docker で動かす場合（簡易化）
+
+Docker と Docker Compose を使うと、フロント・API・MySQL をまとめて起動できます。
+
+### 11.1 前提
+
+- ローカルまたはサーバーに [Docker](https://docs.docker.com/get-docker/) と [Docker Compose](https://docs.docker.com/compose/install/) をインストール済みであること。
+
+### 11.2 起動
+
+```bash
+# プロジェクトルートで
+docker compose up -d
+```
+
+- **フロント**: http://localhost:8080  
+- **API**: http://localhost:3000  
+- **MySQL**: localhost:3306（アプリからはコンテナ内の `db` で接続）
+
+### 11.3 本番用に API URL を変える場合
+
+ブラウザから別ドメインで API にアクセスする場合は、フロントのビルド時に `VITE_API_URL` を渡します。
+
+```bash
+# 例: API が https://api.todokizamu.me のとき
+docker compose build frontend --build-arg VITE_API_URL=https://api.todokizamu.me
+docker compose up -d
+```
+
+または `docker-compose.yml` の `frontend` の `build.args.VITE_API_URL` を本番の API URL に書き換えてから `docker compose up -d --build` してください。
+
+### 11.4 よく使うコマンド
+
+```bash
+# ログ確認
+docker compose logs -f
+
+# 停止
+docker compose down
+
+# ボリュームごと削除（DB も消える）
+docker compose down -v
+```
+
+### 11.5 構成ファイル一覧
+
+| ファイル | 役割 |
+|----------|------|
+| `Dockerfile.frontend` | フロント: Node でビルド → Nginx で配信 |
+| `myskin-api/Dockerfile` | API: Node.js で server.js 起動 |
+| `docker-compose.yml` | db / api / frontend の定義と接続 |
+| `docker/nginx-front.conf` | フロント用 Nginx 設定（SPA 用 try_files） |
+
+---
+
+以上で、EC2 上でフロント（Nginx）・API（Node + PM2）・MySQL を使った本番構成の概要と設定手順になります。Cloudflare 経由の場合は **セクション 10**、Docker でまとめて動かす場合は **セクション 11** を参照してください。

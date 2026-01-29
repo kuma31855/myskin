@@ -1,0 +1,62 @@
+# MySkin: フロント + API + MySQL
+# 使い方: docker compose up -d
+# フロント: http://localhost:8080  API: http://localhost:3000
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: myskin
+      MYSQL_USER: myskin
+      MYSQL_PASSWORD: myskin
+    ports:
+      - "3306:3306"
+    volumes:
+      - myskin_mysql_data:/var/lib/mysql
+      - ./myskin-api/myskin_seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    build:
+      context: ./myskin-api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DB_HOST: db
+      DB_USER: myskin
+      DB_PASSWORD: myskin
+      DB_NAME: myskin
+      DB_PORT: 3306
+      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - myskin_api_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # ブラウザからアクセスする API の URL（同一マシンなら localhost:3000）
+        VITE_API_URL: http://localhost:3000
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  myskin_mysql_data:
+  myskin_api_uploads:
