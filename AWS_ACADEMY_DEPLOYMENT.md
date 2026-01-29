@@ -225,6 +225,62 @@ curl -sI "http://${EC2_IP}:8080"
 - **フロント**: `http://<EC2_PUBLIC_IP>:8080`
 - **API**: `http://<EC2_PUBLIC_IP>:3000`
 
+#### 3.5 データベースのデータ投入（シード）
+
+##### Docker を使う場合
+
+**初回**: `docker compose up -d` で DB コンテナが起動すると、`myskin_seed.sql` が自動で実行されます（テーブル作成＋商品データ投入）。何もしなくて大丈夫です。
+
+**もう一度シードを流し直したい場合**（DB を空にして初期データだけに戻す）:
+
+```bash
+cd ~/myskin
+
+# DB ボリュームを削除してから起動し直す（データはすべて消える）
+docker compose down -v
+docker compose up -d
+
+# DB のヘルスが通るまで数十秒待ってから API が使える
+```
+
+**コンテナ内で手動で SQL を流す場合**:
+
+```bash
+# シードファイルを DB コンテナに流す（-T で TTY 無効、リダイレクト用）
+docker-compose exec -T db mysql -u myskin -pmyskin myskin < myskin-api/myskin_seed.sql
+```
+
+※ 既存テーブルは `myskin_seed.sql` 内で DROP されているため、上書き実行になります。
+
+##### Docker を使わない場合（EC2 で MySQL を直接インストールしている場合）
+
+1. **DB とユーザーを作成**（MySQL に root でログイン）:
+
+```bash
+sudo mysql -u root -p
+```
+
+```sql
+CREATE DATABASE IF NOT EXISTS myskin CHARACTER SET utf8mb4;
+CREATE USER 'myskin'@'localhost' IDENTIFIED BY 'myskin';
+GRANT ALL PRIVILEGES ON myskin.* TO 'myskin'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+2. **シードを実行**:
+
+```bash
+cd ~/myskin/myskin-api
+mysql -u myskin -pmyskin myskin < myskin_seed.sql
+```
+
+3. **確認**（商品が入っているか）:
+
+```bash
+mysql -u myskin -pmyskin myskin -e "SELECT id, name, price FROM products LIMIT 5;"
+```
+
 ---
 
 ### ステップ 4: ドメイン・Cloudflare・Nginx の設定（オプション）
@@ -265,9 +321,15 @@ sudo systemctl enable nginx
 sudo systemctl start nginx
 ```
 
-**フロント用** `/etc/nginx/conf.d/myskin-front.conf`:
+**1 ファイルで設定** `/etc/nginx/conf.d/myskin.conf`（フロント + API をまとめる）:
 
 ```nginx
+# API 用アップストリーム
+upstream myskin_api {
+    server 127.0.0.1:3000;
+}
+
+# フロント: todokizamu.me, www.todokizamu.me → Docker 8080
 server {
     listen 80;
     server_name todokizamu.me www.todokizamu.me;
@@ -281,15 +343,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
-```
 
-**API 用** `/etc/nginx/conf.d/myskin-api.conf`:
-
-```nginx
-upstream myskin_api {
-    server 127.0.0.1:3000;
-}
-
+# API: api.todokizamu.me → Docker 3000
 server {
     listen 80;
     server_name api.todokizamu.me;
@@ -307,7 +362,12 @@ server {
 }
 ```
 
+作成・反映:
+
 ```bash
+sudo vim /etc/nginx/conf.d/myskin.conf
+# 上記を貼り付けて保存
+
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -356,7 +416,79 @@ environment:
 
 ## 🔧 トラブルシューティング
 
-### 1. Cloudflare エラー 522（Connection timed out）
+### 1. Cloudflare エラー 521（Web server is down）
+
+- **意味**: Cloudflare がオリジン（EC2）の **ポート 80** に接続しようとしたが、接続できなかった状態です。  
+  Docker のフロントは **8080**、API は **3000** で動いているため、**EC2 上で Nginx が 80 番で動いていない**と 521 になります。
+
+- **対処**: EC2 に **Nginx を入れ、80 番で listen し、8080/3000 にプロキシ**してください。
+
+```bash
+# 1. Nginx が入っているか・動いているか
+sudo systemctl status nginx
+
+# 2. 入っていない／止まっている場合
+sudo dnf install -y nginx
+# ポート 80 が他で使われていないか確認（httpd が使っている場合は停止）
+sudo ss -tlnp | grep :80
+# sudo systemctl stop httpd && sudo systemctl disable httpd   # 必要なら
+sudo systemctl enable nginx
+sudo systemctl start nginx
+```
+
+**3. 設定ファイルを 1 つ作成** `/etc/nginx/conf.d/myskin.conf`（ステップ 4.3 の内容）:
+
+```nginx
+upstream myskin_api {
+    server 127.0.0.1:3000;
+}
+
+server {
+    listen 80;
+    server_name todokizamu.me www.todokizamu.me;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name api.todokizamu.me;
+    location / {
+        proxy_pass http://myskin_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+    }
+}
+```
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+**4. 確認**（EC2 上）:
+
+```bash
+curl -sI -H "Host: todokizamu.me" http://127.0.0.1/
+# HTTP 200 や 301 が返れば OK
+```
+
+- セキュリティグループで **80** と **443** が 0.0.0.0/0 で開いていることも確認してください（画像の通りであれば問題ありません）。
+
+---
+
+### 2. Cloudflare エラー 522（Connection timed out）
 
 - **意味**: Cloudflare から EC2（オリジン）への接続がタイムアウトしている状態です。
 - **確認**:
@@ -368,12 +500,12 @@ environment:
 
 詳しくはプロジェクト内の **DEPLOYMENT.md「10. Cloudflare を使う場合」** を参照してください。
 
-### 2. フロントから API にアクセスできない（CORS / 404）
+### 3. フロントから API にアクセスできない（CORS / 404）
 
 - **CORS**: API の `ALLOWED_ORIGINS` に、ブラウザで開いているフロントの URL（例: `https://todokizamu.me`）が含まれているか確認。
 - **404**: Nginx の `proxy_pass` が `http://127.0.0.1:3000`（または `http://myskin_api`）になっているか確認。
 
-### 3. コンテナが起動しない / API が DB に接続できない
+### 4. コンテナが起動しない / API が DB に接続できない
 
 ```bash
 # ログ確認
@@ -387,7 +519,7 @@ docker compose exec db mysqladmin ping -h localhost -uroot -prootpass
 - API は `db` のヘルスチェック通過後に起動します。DB がまだ立ち上がっていない場合は数十秒待ってから再度 `docker compose ps` を確認してください。
 - パスワードは `docker-compose.yml` の `db` の `MYSQL_*` と、`api` の `DB_*` が一致しているか確認してください。
 
-### 4. ディスク容量不足（no space left on device）
+### 5. ディスク容量不足（no space left on device）
 
 ```bash
 df -h
@@ -397,7 +529,7 @@ docker system prune -a --volumes
 
 不要なイメージ・ボリュームを削除し、必要に応じて EBS ボリュームを拡張してください。
 
-### 5. 静的ファイル（フロント）が 403 / 404
+### 6. 静的ファイル（フロント）が 403 / 404
 
 - Docker の Nginx はコンテナ内の `/usr/share/nginx/html` を配信しています。ビルドが成功していれば、`docker compose up -d --build` で再ビルド・再起動すれば解消することが多いです。
 - ドメイン経由で 403 の場合は、Nginx の `proxy_pass` が `http://127.0.0.1:8080` になっているか確認してください。
