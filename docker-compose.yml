@@ -35,7 +35,7 @@ services:
       DB_PASSWORD: myskin
       DB_NAME: myskin
       DB_PORT: 3306
-      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:3000
+      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:3000,http://todokizamu.me,http://www.todokizamu.me,https://todokizamu.me,https://www.todokizamu.me
     ports:
       - "3000:3000"
     volumes:
