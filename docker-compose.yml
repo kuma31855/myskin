@@ -49,8 +49,8 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        # ブラウザからアクセスする API の URL（同一マシンなら localhost:3000）
-        VITE_API_URL: http://localhost:3000
+        # ルート .env の VITE_API_URL を使う（未設定時は localhost:3000）
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
     restart: unless-stopped
     ports:
       - "8080:80"

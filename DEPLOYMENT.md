@@ -2,6 +2,8 @@
 
 本番環境（EC2）にデプロイするための環境構築・設定手順です。
 
+> **AWS Academy でデプロイする場合**: 制限事項・コスト見積もり・ステップバイステップ手順は **[AWS_ACADEMY_DEPLOYMENT.md](./AWS_ACADEMY_DEPLOYMENT.md)** を参照してください。
+
 ---
 
 ## 1. アーキテクチャ概要
