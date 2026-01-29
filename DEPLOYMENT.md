@@ -47,9 +47,10 @@ npm -v
 
 ```bash
 # Amazon Linux 2023
-sudo dnf install -y mysql-server
-sudo systemctl start mysqld
-sudo systemctl enable mysqld
+sudo dnf update -y
+sudo dnf install -y mariadb105-server
+sudo systemctl enable --now mariadb
+mariadb --version
 
 # 初回ログイン（一時パスワードは /var/log/mysqld.log を確認）
 sudo mysql -u root -p
@@ -59,7 +60,7 @@ MySQL 内で DB とユーザー作成:
 
 ```sql
 CREATE DATABASE myskin CHARACTER SET utf8mb4;
-CREATE USER 'myskin'@'localhost' IDENTIFIED BY 'あなたの強力なパスワード';
+CREATE USER 'myskin'@'localhost' IDENTIFIED BY 'myskin0909';
 GRANT ALL PRIVILEGES ON myskin.* TO 'myskin'@'localhost';
 FLUSH PRIVILEGES;
 EXIT;
@@ -104,7 +105,7 @@ NODE_ENV=production
 
 DB_HOST=localhost
 DB_USER=myskin
-DB_PASSWORD=あなたのDBパスワード
+DB_PASSWORD=myskin0909
 DB_NAME=myskin
 DB_PORT=3306
 
@@ -171,7 +172,7 @@ pm2 startup
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com www.your-domain.com;
+    server_name todokizamu.me www.todokizamu.me;
     root /home/ec2-user/myskin/build;
     index index.html;
     location / {
@@ -189,7 +190,7 @@ upstream myskin_api {
 
 server {
     listen 80;
-    server_name api.your-domain.com;
+    server_name api.todokizamu.me;
 
     location / {
         proxy_pass http://myskin_api;
@@ -204,8 +205,8 @@ server {
 }
 ```
 
-- 本番の `.env.production`: `VITE_API_URL=https://api.your-domain.com`
-- API の `ALLOWED_ORIGINS`: `https://your-domain.com,https://www.your-domain.com`
+- 本番の `.env.production`: `VITE_API_URL=https://api.todokizamu.me`
+- API の `ALLOWED_ORIGINS`: `https://todokizamu.me,https://www.todokizamu.me`
 
 ### 6.2 同一ドメインで /api と /ws を使う場合
 
@@ -216,7 +217,7 @@ server {
   const wss = new WebSocket.Server({ server, path: '/ws' });
   ```
 - フロントの WebSocket URL を `/ws` に:
-  - `VITE_WS_URL=https://your-domain.com/ws` のように別変数にするか、`VITE_API_URL` の末尾に `/ws` を付与する実装にする。
+  - `VITE_WS_URL=https://todokizamu.net/ws` のように別変数にするか、`VITE_API_URL` の末尾に `/ws` を付与する実装にする。
 
 例: `/etc/nginx/conf.d/myskin.conf`（同一ドメイン）
 
