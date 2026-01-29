@@ -150,7 +150,7 @@ cd myskin
 cd ~/myskin
 
 # そのまま起動（VITE_API_URL は docker-compose.yml のデフォルト http://localhost:3000）
-docker compose up -d --build
+docker-compose up -d --build
 ```
 
 - フロント: `http://<EC2_PUBLIC_IP>:8080`

@@ -8,7 +8,8 @@ ARG VITE_API_URL=http://localhost:3000
 ENV VITE_API_URL=$VITE_API_URL
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# react-day-picker@8 は peer に React 19 未記載のため --legacy-peer-deps で解決
+RUN npm ci --legacy-peer-deps
 
 COPY . .
 RUN npm run build
