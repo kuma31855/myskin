@@ -1,0 +1,1 @@
+@"C:/Users/2240074/anaconda3/envs/py310/python.exe" generate_qr.py
