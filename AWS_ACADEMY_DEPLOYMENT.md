@@ -103,17 +103,24 @@ ssh -i myskin-key.pem ec2-user@<EC2_PUBLIC_IP>
 
 ```bash
 # システム更新
-sudo dnf update -y
+sudo yum update -y
 
 # Docker のインストール
-sudo dnf install -y docker
+sudo yum install -y docker
 sudo systemctl start docker
 sudo systemctl enable docker
 sudo usermod -aG docker ec2-user
+newgrp docker
 
 # Docker Compose プラグイン
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
+ 
+mkdir -p ~/.docker/cli-plugins
+ 
+curl -SL https://github.com/docker/buildx/releases/download/v0.19.1/buildx-v0.19.1.linux-amd64 -o ~/.docker/cli-plugins/docker-buildx
+ 
+chmod +x ~/.docker/cli-plugins/docker-buildx
 
 # 再ログインして docker グループを有効化
 exit
@@ -123,7 +130,7 @@ exit
 #### 2.3 Git のインストール
 
 ```bash
-sudo dnf install -y git
+sudo yum install -y git
 git --version
 ```
 
@@ -135,7 +142,7 @@ git --version
 
 ```bash
 cd ~
-git clone <あなたのMySkinリポジトリURL> myskin
+git clone https://github.com/kuma31855/myskin.git
 cd myskin
 ```
 
@@ -316,7 +323,7 @@ sudo systemctl disable httpd
 #### 4.3 Nginx のインストールとリバースプロキシ設定
 
 ```bash
-sudo dnf install -y nginx
+sudo yum install -y nginx
 sudo systemctl enable nginx
 sudo systemctl start nginx
 ```
@@ -329,10 +336,10 @@ upstream myskin_api {
     server 127.0.0.1:3000;
 }
 
-# フロント: todokizamu.me, www.todokizamu.me → Docker 8080
+# フロント: myskinlab.live, www.myskinlab.live → Docker 8080
 server {
     listen 80;
-    server_name todokizamu.me www.todokizamu.me;
+    server_name myskinlab.live www.myskinlab.live;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -344,10 +351,10 @@ server {
     }
 }
 
-# API: api.todokizamu.me → Docker 3000
+# API: api.myskinlab.live → Docker 3000
 server {
     listen 80;
-    server_name api.todokizamu.me;
+    server_name api.myskinlab.live;
 
     location / {
         proxy_pass http://myskin_api;

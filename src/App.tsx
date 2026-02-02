@@ -16,6 +16,8 @@ import { AdminPage } from './components/AdminPage'; // ★追加
 import { OrderHistoryPage } from './components/OrderHistoryPage';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
+import { Input } from './components/ui/input';
+import { ArrowUp } from 'lucide-react';
 
 
 // ==============================
@@ -86,6 +88,8 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [orderData, setOrderData] = useState<OrderData | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // 初回読み込み時にlocalStorageからログイン情報を復元
   useEffect(() => {
@@ -102,13 +106,32 @@ export default function App() {
     }
   }, []);
 
+  // スクロール検知
+  useEffect(() => {
+    const handleScroll = () => {
+      // console.log("Scroll Y:", window.scrollY); // デバッグ用
+      if (window.scrollY > 300) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // WebSocket接続管理
   useEffect(() => {
     if (!currentUser) {
       return;
     }
 
-    const wsUrl = import.meta.env.VITE_API_URL.replace(/^http/, 'ws');
+    const wsUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/^http/, 'ws');
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -151,49 +174,44 @@ export default function App() {
   }, [currentUser]); // currentUserが変わった時（ログイン・ログアウト時）に実行
 
   useEffect(() => {
-    if (window.location.hash === '#admin') {
-      setCurrentPage('admin');
-    }
+    const handleHashChange = () => {
+      console.log("Current hash:", window.location.hash);
+      if (window.location.hash.includes('admin')) {
+        setCurrentPage('admin');
+      }
+    };
+
+    handleHashChange(); // Initial check
+    window.addEventListener('hashchange', handleHashChange);
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
   }, []);
 
     // API から products を取得（DB 連携）
 
   useEffect(() => {
-
     const fetchProducts = async () => {
-
       try {
-
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/products`); // ★ここ
-
-  
-
+        const res = await fetch(`${(import.meta.env.VITE_API_URL || 'http://localhost:3000')}/api/products`); // ★ここ
         if (!res.ok) {
-
           throw new Error(`HTTP error: ${res.status}`);
-
         }
-
-  
-
         const data: Product[] = await res.json();
-
         setProducts(data); // ★ DB のデータ（10件）をセット
-
       } catch (error) {
-
         console.error('商品取得に失敗しました。ダミーデータを使用します。', error);
-
         // ここでは何もしないので、通信失敗時だけ initialProducts(8件)が表示される
-
       }
-
     };
 
-  
-
     fetchProducts();
+    
+    // 30秒ごとに商品を自動更新
+    const intervalId = setInterval(fetchProducts, 30000);
 
+    return () => clearInterval(intervalId);
   }, []); // 依存配列は空のまま
 
   
@@ -323,7 +341,7 @@ export default function App() {
 
       try {
 
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/orders`, {
+        const res = await fetch(`${(import.meta.env.VITE_API_URL || 'http://localhost:3000')}/api/orders`, {
 
           method: 'POST',
 
@@ -382,6 +400,8 @@ export default function App() {
           onSubscriptionClick={() => setSubscriptionOpen(true)}
           isLoggedIn={isLoggedIn}
           onLogout={handleLogout}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
         />
         <CartPage
           items={cartItems}
@@ -419,6 +439,8 @@ export default function App() {
           onSubscriptionClick={() => setSubscriptionOpen(true)}
           isLoggedIn={isLoggedIn}
           onLogout={handleLogout}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
         />
         <CheckoutPage
           items={cartItems}
@@ -454,6 +476,8 @@ export default function App() {
           onSubscriptionClick={() => setSubscriptionOpen(true)}
           isLoggedIn={isLoggedIn}
           onLogout={handleLogout}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
         />
         <OrderCompletePage
           orderNumber={orderData.orderNumber}
@@ -492,6 +516,8 @@ export default function App() {
           onSubscriptionClick={() => setSubscriptionOpen(true)}
           isLoggedIn={isLoggedIn}
           onLogout={handleLogout}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
         />
         <AdminPage />
         <Toaster />
@@ -512,6 +538,8 @@ export default function App() {
           onSubscriptionClick={() => setSubscriptionOpen(true)}
           isLoggedIn={isLoggedIn}
           onLogout={handleLogout}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
         />
         <OrderHistoryPage currentUser={currentUser} onBackToHome={handleBackToHome} />
         <Footer />
@@ -546,6 +574,8 @@ export default function App() {
         onSubscriptionClick={() => setSubscriptionOpen(true)}
         isLoggedIn={isLoggedIn}
         onLogout={handleLogout}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       <main>
@@ -556,19 +586,24 @@ export default function App() {
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
               <h2 className="text-4xl mb-4">人気の商品</h2>
-              <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
                 厳選されたスキンケア商品をご覧ください。
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {products.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  {...product}
-                  onAddToCart={handleAddToCart}
-                />
-              ))} 
+              {products
+                .filter((product) =>
+                  product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  product.brand.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+                .map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    {...product}
+                    onAddToCart={handleAddToCart}
+                  />
+                ))} 
             </div>
           </div>
         </section>
@@ -607,6 +642,15 @@ export default function App() {
         open={subscriptionOpen}
         onOpenChange={setSubscriptionOpen}
       />
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-8 right-8 p-3 bg-pink-500 text-white rounded-full shadow-lg hover:bg-pink-600 transition-colors z-[100]"
+          aria-label="トップに戻る"
+        >
+          <ArrowUp className="w-6 h-6" />
+        </button>
+      )}
       <Toaster />
     </div>
   );

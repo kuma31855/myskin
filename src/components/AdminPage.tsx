@@ -25,6 +25,12 @@ import {
   DialogFooter,
   DialogClose,
 } from './ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import { Textarea } from './ui/textarea';
 
 interface User {
@@ -54,7 +60,7 @@ interface Product {
   price: number;
 }
 
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -74,8 +80,10 @@ export function AdminPage() {
     (user.phone_number && user.phone_number.toLowerCase().includes(userSearchQuery.toLowerCase()))
   );
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (isBackground = false) => {
+    if (!isBackground) {
+      setLoading(true);
+    }
     try {
       const [usersRes, ordersRes, productsRes] = await Promise.all([
         fetch(`${apiUrl}/api/admin/users`),
@@ -89,14 +97,25 @@ export function AdminPage() {
 
     } catch (error) {
       console.error("Failed to fetch admin data", error);
-      toast.error("データの取得に失敗しました");
+      if (!isBackground) {
+        toast.error("データの取得に失敗しました");
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchData();
+    
+    // 30秒ごとにデータを自動更新
+    const intervalId = setInterval(() => {
+      fetchData(true);
+    }, 30000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const handleStockChange = (id: number, val: string) => {
@@ -241,6 +260,44 @@ export function AdminPage() {
     }
   };
 
+  const handleDeleteUser = async (id: number) => {
+    if (!window.confirm("このユーザーを本当に削除しますか？")) return;
+
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/users/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        toast.success("ユーザーを削除しました");
+        setUsers(prev => prev.filter(u => u.id !== id));
+      } else {
+        const errorData = await res.json();
+        // 409 Conflict: 注文履歴がある場合
+        if (res.status === 409 && errorData.canForceDelete) {
+            if (window.confirm("このユーザーには注文履歴があります。履歴ごと完全に削除しますか？\n（この操作は取り消せません）")) {
+                // 強制削除を実行
+                const forceRes = await fetch(`${apiUrl}/api/admin/users/${id}?force=true`, {
+                    method: 'DELETE',
+                });
+                
+                if (forceRes.ok) {
+                    toast.success("ユーザーと関連データを完全に削除しました");
+                    setUsers(prev => prev.filter(u => u.id !== id));
+                } else {
+                    const forceError = await forceRes.json();
+                    throw new Error(forceError.message || "Force delete failed");
+                }
+            }
+        } else {
+            throw new Error(errorData.message || "Delete failed");
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || "ユーザー削除に失敗しました");
+    }
+  };
+
   return (
     <div className="container mx-auto py-10 px-4">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-8">
@@ -354,8 +411,7 @@ export function AdminPage() {
                       <TableHead>名前</TableHead>
                       <TableHead>メールアドレス</TableHead>
                       <TableHead>電話番号</TableHead>
-                      <TableHead>登録日時</TableHead>
-                      <TableHead>最終ログイン</TableHead>
+                      <TableHead className="min-w-[100px]">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -365,15 +421,22 @@ export function AdminPage() {
                         <TableCell>{user.name}</TableCell>
                         <TableCell>{user.email}</TableCell>
                         <TableCell>{user.phone_number || '未登録'}</TableCell>
-                        <TableCell>{new Date(user.created_at).toLocaleString()}</TableCell>
                         <TableCell>
-                          {user.last_login ? new Date(user.last_login).toLocaleString() : '未ログイン'}
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 gap-1"
+                            onClick={() => handleDeleteUser(user.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            削除
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
                      {filteredUsers.length === 0 && (
                       <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                               ユーザーデータがありません
                           </TableCell>
                       </TableRow>

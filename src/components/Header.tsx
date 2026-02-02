@@ -40,6 +40,8 @@ interface HeaderProps {
   onSubscriptionClick?: () => void;
   isLoggedIn?: boolean;
   onLogout?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 export function Header({
@@ -52,6 +54,8 @@ export function Header({
   onSubscriptionClick,
   isLoggedIn = false,
   onLogout,
+  searchQuery = "",
+  onSearchChange,
 }: HeaderProps) {
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -93,6 +97,8 @@ export function Header({
                   type="search"
                   placeholder="商品を検索..."
                   className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto"
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange?.(e.target.value)}
                 />
               </div>
 
@@ -165,6 +171,8 @@ export function Header({
                           type="search"
                           placeholder="商品を検索..."
                           className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto"
+                          value={searchQuery}
+                          onChange={(e) => onSearchChange?.(e.target.value)}
                         />
                     </div>
                     <nav className="flex flex-col space-y-4 text-lg">

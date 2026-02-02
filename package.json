@@ -55,6 +55,8 @@
       },
       "scripts": {
             "dev": "vite",
+            "start": "vite",
+            "api": "cd myskin-api && npm start",
             "build": "vite build"
       }
 }

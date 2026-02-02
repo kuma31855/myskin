@@ -21,7 +21,7 @@ interface Order {
   shipping_address: string;
 }
 
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export function OrderHistoryPage({ currentUser, onBackToHome }: OrderHistoryPageProps) {
   const [orders, setOrders] = useState<Order[]>([]);

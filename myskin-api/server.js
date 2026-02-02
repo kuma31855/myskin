@@ -244,6 +244,60 @@ app.get("/api/admin/users", async (req, res) => {
   }
 });
 
+// ユーザー削除
+app.delete("/api/admin/users/:id", async (req, res) => {
+  const userId = req.params.id;
+  const force = req.query.force === 'true';
+
+  let connection;
+  try {
+    if (force) {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // 1. ユーザーの注文IDを取得
+        const [orders] = await connection.query("SELECT id FROM orders WHERE user_id = ?", [userId]);
+        const orderIds = orders.map(o => o.id);
+
+        if (orderIds.length > 0) {
+            // 2. order_items を削除
+            // orderIdsの配列をカンマ区切りの文字列に変換する代わりに、IN句を使う
+            // プレースホルダーを動的に生成: ?,?,?
+            const placeholders = orderIds.map(() => '?').join(',');
+            await connection.query(`DELETE FROM order_items WHERE order_id IN (${placeholders})`, orderIds);
+
+            // 3. orders を削除
+            await connection.query("DELETE FROM orders WHERE user_id = ?", [userId]);
+        }
+
+        // 4. ユーザーを削除
+        await connection.query("DELETE FROM users WHERE id = ?", [userId]);
+
+        await connection.commit();
+        res.json({ message: "ユーザーと関連データを完全に削除しました" });
+
+    } else {
+        // 通常削除（外部キー制約エラーを期待）
+        await pool.query("DELETE FROM users WHERE id = ?", [userId]);
+        res.json({ message: "ユーザーを削除しました" });
+    }
+
+  } catch (err) {
+    if (connection) {
+        await connection.rollback();
+    }
+    console.error("User delete error:", err);
+    if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+       return res.status(409).json({ message: "注文履歴があるため削除できません。強制削除しますか？", canForceDelete: true });
+    }
+    res.status(500).json({ message: "DBエラー" });
+  } finally {
+    if (connection) {
+        connection.release();
+    }
+  }
+});
+
 // 全注文取得
 app.get("/api/admin/orders", async (req, res) => {
   try {
